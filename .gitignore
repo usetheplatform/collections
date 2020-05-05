@@ -1,0 +1,8 @@
+.parcel-cache
+.cache
+.DS_Store
+dist
+elm-stuff
+node_modules
+.env
+.idea

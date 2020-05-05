@@ -1,0 +1,11 @@
+- Infinite scrolling
+- Pagination with Intersection Observer or scroll event
+- Modal slider with animations
+- Dynamic limit
+- Display color while photo is loading
+- Display color if photo can not be loaded
+- Fade in animation when image is actually loaded
+- a11y modal window
+- search?
+- cypress testing & unit testing
+- load webp or fallback to jpeg (check if there are any other options and for retina too)

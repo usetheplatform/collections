@@ -13,9 +13,10 @@ npm install
 To start the app. It will open a window at *localhost:1234*.
 ```bash
 npm start
+```
 
 Tests
-To run tests simply type yarn test:coverage in your terminal
+To run tests simply type npm run test in your terminal
 ```bash
 npm run test
 ```

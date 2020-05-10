@@ -2,12 +2,16 @@ module Collections exposing (init, main, update, view)
 
 import Browser
 import Css exposing (..)
+import Css.Animations
 import Css.Global
-import Html.Styled exposing (Html, div, img, li, toUnstyled, ul)
-import Html.Styled.Attributes exposing (alt, class, css, src, style)
+import Dict
+import Html.Styled exposing (Html, button, div, img, li, text, toUnstyled, ul)
+import Html.Styled.Attributes as Attributes exposing (alt, class, css, src, style)
+import Html.Styled.Events exposing (onClick)
 import Http exposing (header)
 import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Pipeline as DecodePipeline
+import Json.Encode as Encode
 import Url.Builder
 
 
@@ -64,15 +68,24 @@ orderToString order =
 
 
 type alias Pagination =
-    { page : Int
-    , per_page : Int
-    , order_by : Order
+    { nextPage : Int
+    , perPage : Int
+    , orderBy : Order
+    , hasMore : Bool
+    }
+
+
+type alias PhotoResponse =
+    { photos : List Photo
+    , perPage : Int
+    , total : Int
     }
 
 
 type alias Model =
     { selectedPhotoUrl : Maybe String
     , photos : List Photo
+    , isLoading : Bool
     , accessKey : String
     , pagination : Pagination
     }
@@ -82,8 +95,9 @@ initialModel : Model
 initialModel =
     { selectedPhotoUrl = Nothing
     , photos = []
+    , isLoading = True
     , accessKey = ""
-    , pagination = { page = 1, per_page = 40, order_by = Latest }
+    , pagination = { nextPage = 1, perPage = 30, orderBy = Latest, hasMore = Basics.True }
     }
 
 
@@ -95,7 +109,8 @@ init flags =
 
 
 type Msg
-    = GotPhotos (Result Http.Error (List Photo))
+    = GotPhotos (Result Http.Error PhotoResponse)
+    | LoadMore
 
 
 
@@ -105,12 +120,31 @@ type Msg
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        GotPhotos (Ok photos) ->
-            ( { model | photos = photos }, Cmd.none )
+        GotPhotos (Ok response) ->
+            ( { model
+                | photos = model.photos ++ response.photos
+                , pagination = updatePagination model.pagination
+                , isLoading = False
+              }
+            , Cmd.none
+            )
 
         -- TODO: Handle the error
         GotPhotos (Err _) ->
-            ( model, Cmd.none )
+            ( { model | isLoading = False }, Cmd.none )
+
+        LoadMore ->
+            ( { model | isLoading = True }, fetchPhotos model.accessKey model.pagination )
+
+
+
+-- TODO: Calculate next page based on per_page and total.
+-- TODO: If there are no more photos, set `hasMore` to False
+
+
+updatePagination : Pagination -> Pagination
+updatePagination pagination =
+    { pagination | nextPage = pagination.nextPage + 1 }
 
 
 
@@ -144,12 +178,70 @@ view model =
                 ]
             ]
           <|
-            List.map viewImage model.photos
+            List.map viewPhoto model.photos
+        , viewLoadingSpinner model.isLoading
+        , viewTemporaryButton
         ]
 
 
-viewImage : Photo -> Html Msg
-viewImage photo =
+viewLoadingSpinner : Bool -> Html Msg
+viewLoadingSpinner isLoading =
+    let
+        spinningAnimation =
+            Css.Animations.keyframes
+                [ ( 0, [ Css.Animations.transform [ rotate (deg 0) ] ] )
+                , ( 100, [ Css.Animations.transform [ rotate (deg 360) ] ] )
+                ]
+    in
+    if isLoading then
+        div
+            [ css
+                [ position fixed
+                , zIndex (int 1)
+                , right (em 2)
+                , bottom (em 2)
+                , width (px 48)
+                , height (px 48)
+                , borderRadius (px 96)
+                , border3 (px 2) solid (hex "000")
+                , borderTopColor transparent
+                , animationName spinningAnimation
+                , animationDuration (sec 1)
+                , property "animation-iteration-count" "infinite"
+                , property "animation-timing-function" "linear"
+                ]
+            ]
+            []
+
+    else
+        text ""
+
+
+viewTemporaryButton : Html Msg
+viewTemporaryButton =
+    div
+        [ css
+            [ displayFlex
+            , alignItems center
+            , justifyContent center
+            , padding2 (px 16) zero
+            ]
+        ]
+        [ button
+            [ css
+                [ padding2 (px 8) (px 12)
+                , border3 (px 1) solid (hex "fc0")
+                , backgroundColor (hex "fff")
+                , fontSize (rem 1.3)
+                ]
+            , onClick LoadMore
+            ]
+            [ text "Загрузить еще" ]
+        ]
+
+
+viewPhoto : Photo -> Html Msg
+viewPhoto photo =
     let
         ratio =
             toFloat photo.width / toFloat photo.height
@@ -175,6 +267,8 @@ viewImage photo =
             [ css [ display block, width (pct 100), property "object-fit" "cover" ]
             , alt description
             , src photo.urls.small
+            , Attributes.width calculatedWidth
+            , Attributes.property "loading" (Encode.string "lazy")
             ]
             []
         ]
@@ -190,19 +284,62 @@ fetchPhotos accessKey pagination =
         headers =
             [ header "Authorization" ("Client-ID " ++ accessKey) ]
 
-        -- TODO: Add `page` parameter
         url =
-            Url.Builder.relative [ apiUrl, "photos" ] [ Url.Builder.int "per_page" pagination.per_page ]
+            Url.Builder.relative
+                [ apiUrl, "photos" ]
+                [ Url.Builder.int "per_page" pagination.perPage
+                , Url.Builder.int "page" pagination.nextPage
+                ]
     in
+    getPhotos url headers
+
+
+getPhotos : String -> List Http.Header -> Cmd Msg
+getPhotos url headers =
     Http.request
         { method = "GET"
         , headers = headers
         , url = url
         , body = Http.emptyBody
-        , expect = Http.expectJson GotPhotos photosDecoder
+        , expect = Http.expectStringResponse GotPhotos extractPhotosResponse
         , timeout = Nothing
         , tracker = Nothing
         }
+
+
+extractPhotosResponse : Http.Response String -> Result Http.Error PhotoResponse
+extractPhotosResponse response =
+    case response of
+        Http.GoodStatus_ metadata json ->
+            let
+                total =
+                    Dict.get "x-total" metadata.headers
+                        |> Maybe.andThen String.toInt
+                        |> Maybe.withDefault 0
+
+                perPage =
+                    Dict.get "x-per-page" metadata.headers
+                        |> Maybe.andThen String.toInt
+                        |> Maybe.withDefault 30
+            in
+            case Decode.decodeString photosDecoder json of
+                Ok photos ->
+                    Ok { perPage = perPage, total = total, photos = photos }
+
+                Err err ->
+                    Err (Http.BadBody (Decode.errorToString err))
+
+        Http.BadStatus_ metadata _ ->
+            Err (Http.BadStatus metadata.statusCode)
+
+        Http.BadUrl_ url ->
+            Err (Http.BadUrl url)
+
+        Http.Timeout_ ->
+            Err Http.Timeout
+
+        Http.NetworkError_ ->
+            Err Http.NetworkError
 
 
 photosDecoder : Decoder (List Photo)

@@ -10,3 +10,5 @@
 - cypress testing & unit testing
 - load webp or fallback to jpeg (check if there are any other options and for retina too)
 - host on zeit/vercel
+- setup github actions to run tests and playwright
+- lazy attribute for img and width & height

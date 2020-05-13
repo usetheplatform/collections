@@ -88,6 +88,7 @@ type alias Model =
     , isLoading : Bool
     , accessKey : String
     , pagination : Pagination
+    , error : Maybe String
     }
 
 
@@ -98,6 +99,7 @@ initialModel =
     , isLoading = True
     , accessKey = ""
     , pagination = { nextPage = 1, perPage = 30, orderBy = Latest, hasMore = Basics.True }
+    , error = Nothing
     }
 
 
@@ -130,13 +132,33 @@ update msg model =
             )
 
         -- TODO: Handle the error
-        GotPhotos (Err _) ->
-            ( { model | isLoading = False }, Cmd.none )
+        GotPhotos (Err err) ->
+            ( { model | isLoading = False, error = errorToString err }, Cmd.none )
 
         LoadMore ->
-            ( { model | isLoading = True }, fetchPhotos model.accessKey model.pagination )
+            ( { model | isLoading = True, error = Nothing }, fetchPhotos model.accessKey model.pagination )
 
 
+errorToString : Http.Error -> Maybe String
+errorToString error =
+    let
+        err = case error of
+            Http.BadUrl url ->
+                "The URL " ++ url ++ " was invalid"
+            Http.Timeout ->
+                "Unable to reach the server, try again"
+            Http.NetworkError ->
+                "Unable to reach the server, check your network connection"
+            Http.BadStatus 500 ->
+                "The server had a problem, try again later"
+            Http.BadStatus 400 ->
+                "Verify your information and try again"
+            Http.BadStatus _ ->
+                "Unknown error"
+            Http.BadBody errorMessage ->
+                errorMessage
+    in
+    Just err
 
 -- TODO: Calculate next page based on per_page and total.
 -- TODO: If there are no more photos, set `hasMore` to False
@@ -181,8 +203,16 @@ view model =
             List.map viewPhoto model.photos
         , viewLoadingSpinner model.isLoading
         , viewTemporaryButton
+        , viewError model.error
         ]
 
+viewError : Maybe String -> Html Msg
+viewError error =
+    case error of
+        Just err -> 
+            text err
+        Nothing ->
+                text ""
 
 viewLoadingSpinner : Bool -> Html Msg
 viewLoadingSpinner isLoading =
@@ -235,6 +265,7 @@ viewTemporaryButton =
                 , fontSize (rem 1.3)
                 ]
             , onClick LoadMore
+            , Attributes.attribute "data-button" "load-more"
             ]
             [ text "Загрузить еще" ]
         ]
@@ -264,11 +295,17 @@ viewPhoto photo =
         , css [ margin (px 1.5) ]
         ]
         [ img
-            [ css [ display block, width (pct 100), property "object-fit" "cover" ]
+            [ css
+                [ display block
+                , width (pct 100)
+                , height (pct 100)
+                , property "object-fit" "cover"
+                ]
             , alt description
             , src photo.urls.small
             , Attributes.width calculatedWidth
-            , Attributes.property "loading" (Encode.string "lazy")
+            , Attributes.attribute "loading" "lazy"
+            , Attributes.attribute "data-image-id" photo.id
             ]
             []
         ]

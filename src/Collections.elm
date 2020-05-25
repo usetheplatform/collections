@@ -5,13 +5,12 @@ import Css exposing (..)
 import Css.Animations
 import Css.Global
 import Dict
-import Html.Styled exposing (Html, button, div, img, li, text, toUnstyled, ul)
+import Html.Styled exposing (Attribute, Html, button, div, img, li, text, toUnstyled, ul)
 import Html.Styled.Attributes as Attributes exposing (alt, class, css, src, style)
 import Html.Styled.Events exposing (onClick)
 import Http exposing (header)
 import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Pipeline as DecodePipeline
-import Json.Encode as Encode
 import Url.Builder
 
 
@@ -82,6 +81,12 @@ type alias PhotoResponse =
     }
 
 
+type alias ScreenData =
+    { scrollTop : Int
+    , viewportHeight : Int
+    }
+
+
 type alias Model =
     { selectedPhotoUrl : Maybe String
     , photos : List Photo
@@ -113,6 +118,7 @@ init flags =
 type Msg
     = GotPhotos (Result Http.Error PhotoResponse)
     | LoadMore
+    | ShouldLoadMore Bool
 
 
 
@@ -138,27 +144,44 @@ update msg model =
         LoadMore ->
             ( { model | isLoading = True, error = Nothing }, fetchPhotos model.accessKey model.pagination )
 
+        ShouldLoadMore shouldLoadMore ->
+            -- TODO: When loading time is too big, sometimes it fires redundant request.
+            if shouldLoadMore && not model.isLoading then
+                ( { model | isLoading = True, error = Nothing }, fetchPhotos model.accessKey model.pagination )
+
+            else
+                ( model, Cmd.none )
+
 
 errorToString : Http.Error -> Maybe String
 errorToString error =
     let
-        err = case error of
-            Http.BadUrl url ->
-                "The URL " ++ url ++ " was invalid"
-            Http.Timeout ->
-                "Unable to reach the server, try again"
-            Http.NetworkError ->
-                "Unable to reach the server, check your network connection"
-            Http.BadStatus 500 ->
-                "The server had a problem, try again later"
-            Http.BadStatus 400 ->
-                "Verify your information and try again"
-            Http.BadStatus _ ->
-                "Unknown error"
-            Http.BadBody errorMessage ->
-                errorMessage
+        err =
+            case error of
+                Http.BadUrl url ->
+                    "The URL " ++ url ++ " was invalid"
+
+                Http.Timeout ->
+                    "Unable to reach the server, try again"
+
+                Http.NetworkError ->
+                    "Unable to reach the server, check your network connection"
+
+                Http.BadStatus 500 ->
+                    "The server had a problem, try again later"
+
+                Http.BadStatus 400 ->
+                    "Verify your information and try again"
+
+                Http.BadStatus _ ->
+                    "Unknown error"
+
+                Http.BadBody errorMessage ->
+                    errorMessage
     in
     Just err
+
+
 
 -- TODO: Calculate next page based on per_page and total.
 -- TODO: If there are no more photos, set `hasMore` to False
@@ -201,18 +224,22 @@ view model =
             ]
           <|
             List.map viewPhoto model.photos
+        , scrollListener [ onIntersected ShouldLoadMore ] []
         , viewLoadingSpinner model.isLoading
         , viewTemporaryButton
         , viewError model.error
         ]
 
+
 viewError : Maybe String -> Html Msg
 viewError error =
     case error of
-        Just err -> 
+        Just err ->
             text err
+
         Nothing ->
-                text ""
+            text ""
+
 
 viewLoadingSpinner : Bool -> Html Msg
 viewLoadingSpinner isLoading =
@@ -290,9 +317,8 @@ viewPhoto photo =
                     ""
     in
     li
-        [ style "flex-grow" (String.fromInt calculatedWidth)
-        , style "flex-basis" (String.fromInt calculatedWidth ++ "px")
-        , css [ margin (px 1.5) ]
+        [ style "flex-basis" (String.fromInt calculatedWidth ++ "px")
+        , css [ margin (px 1.5), flexGrow (int 1) ]
         ]
         [ img
             [ css
@@ -309,6 +335,18 @@ viewPhoto photo =
             ]
             []
         ]
+
+
+scrollListener : List (Attribute msg) -> List (Html msg) -> Html msg
+scrollListener attributes children =
+    Html.Styled.node "scroll-listener" attributes children
+
+
+onIntersected : (Bool -> msg) -> Attribute msg
+onIntersected toMsg =
+    Decode.at [ "detail" ] Decode.bool
+        |> Decode.map toMsg
+        |> Html.Styled.Events.on "intersected"
 
 
 

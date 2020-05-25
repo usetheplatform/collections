@@ -62,20 +62,44 @@ describe("Collections - Desktop", () => {
         expect(images).toHaveLength(30);
     });
 
-    it.skip("should start loading additional photos, when user clicks on load more button", async () => {
+    it("should start loading additional photos, when user clicks on load more button", async () => {
         await page.goto("localhost:1234");
+
         await page.waitForResponse(/photos/);
 
-        // let request = await page.waitForRequest(/photos/);
         await page.click("[data-button='load-more']");
 
         let response = await page.waitForResponse(/photos/);
+
         await page.waitForSelector("[data-image-id]");
 
         let images = await page.$$eval("[data-image-id]", el => el);
-        // expect(request.url()).toContain("page=2");
-        // expect(response.url()).toContain("page=2");
+        expect(response.url()).toContain("page=2");
         expect(images).toHaveLength(60);
+    });
+
+    it.skip("should start loading additional photos, when user scrolls down of the page", async () => {
+        let onIntersectedMock = jest.fn();
+        await page.goto("localhost:1234");
+
+        await page.waitForResponse(/photos/);
+        let scrollListener = await page.$("[data-test-id='scroll-listener']");
+        await scrollListener.evaluate(el => el.addEventListener("onIntersected", () => onIntersectedMock()));
+
+        await page.on("request", request => console.log(request.url()));
+        await page.evaluate(() => {
+            window.scrollBy(0, window.innerHeight);
+        });
+
+        let response = await page.waitForResponse(/photos/);
+
+        await page.waitForSelector("[data-image-id]");
+        let images = await page.$$eval("[data-image-id]", el => el);
+
+        expect(onIntersectedMock).toHaveBeenCalled();
+        expect(response.url()).toContain("page=2");
+        expect(images).toHaveLength(60);
+
     });
 });
 

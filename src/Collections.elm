@@ -396,6 +396,7 @@ viewButton =
    TODO: Подумать как лучше организовать поиск фотографий в списке @see PhotoGrove app
    TODO: Доделать диалоговое окно @see https://www.w3.org/TR/wai-aria-practices/examples/dialog-modal/dialog.html
    TODO: Сделать фокус
+   TODO: Handle keyboard events
    TODO: Добавить Html.keyed
    Это какой-то пиздец, нужно все переделать. Код очень плохой
 
@@ -436,7 +437,7 @@ viewDialog title closeMsg content =
             [ boxSizing borderBox
             , padding (px 15)
             , backgroundColor (rgba 0 0 0 0.7)
-            , position absolute
+            , position fixed
             , top (pct 0)
             , left (pct 0)
             , height (pct 100)
@@ -485,6 +486,9 @@ viewSelectedPhoto photoId photos =
                     li
                         [ css
                             [ height (pct 100)
+                            , displayFlex
+                            , alignItems center
+                            , justifyContent center
                             , Css.Transitions.transition [ Css.Transitions.transform3 300 0 Css.Transitions.easeOut ]
                             ]
                         ]
@@ -493,7 +497,8 @@ viewSelectedPhoto photoId photos =
                                 [ display block
                                 , Css.Transitions.transition [ Css.Transitions.backgroundColor3 200 0 Css.Transitions.easeInOut ]
                                 , property "object-fit" "contain"
-                                , height (pct 100)
+                                , width (pct 100)
+                                , maxHeight (pct 100)
                                 ]
                             , style "background-color" photo.color
                             , attribute "data-image-id" photo.id

@@ -4,10 +4,12 @@ import Browser
 import Css exposing (..)
 import Css.Animations
 import Css.Global
+import Css.Transitions
 import Dict
-import Html.Styled exposing (Attribute, Html, button, div, img, li, text, toUnstyled, ul)
-import Html.Styled.Attributes as Attributes exposing (alt, class, css, src, style)
-import Html.Styled.Events exposing (onClick)
+import Html exposing (b)
+import Html.Styled exposing (Attribute, Html, button, div, h2, img, li, p, text, toUnstyled, ul)
+import Html.Styled.Attributes as Attributes exposing (alt, attribute, class, css, id, src, style)
+import Html.Styled.Events exposing (onClick, onFocus, onMouseOver)
 import Http exposing (header)
 import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Pipeline as DecodePipeline
@@ -88,7 +90,7 @@ type alias ScreenData =
 
 
 type alias Model =
-    { selectedPhotoUrl : Maybe String
+    { selectedPhotoId : Maybe String
     , photos : List Photo
     , isLoading : Bool
     , accessKey : String
@@ -99,7 +101,7 @@ type alias Model =
 
 initialModel : Model
 initialModel =
-    { selectedPhotoUrl = Nothing
+    { selectedPhotoId = Nothing
     , photos = []
     , isLoading = True
     , accessKey = ""
@@ -119,6 +121,8 @@ type Msg
     = GotPhotos (Result Http.Error PhotoResponse)
     | LoadMore
     | ShouldLoadMore Bool
+    | SelectPhoto String
+    | CloseDialog
 
 
 
@@ -151,6 +155,12 @@ update msg model =
 
             else
                 ( model, Cmd.none )
+
+        SelectPhoto id ->
+            ( { model | selectedPhotoId = Just id }, Cmd.none )
+
+        CloseDialog ->
+            ( { model | selectedPhotoId = Nothing }, Cmd.none )
 
 
 errorToString : Http.Error -> Maybe String
@@ -210,25 +220,31 @@ globalStylesNode =
         ]
 
 
+
+-- TODO: Добавить Html.keyed для рендера списка
+
+
 view : Model -> Html Msg
 view model =
     div
         [ class "collections" ]
-        [ globalStylesNode
-        , ul
+        ([ globalStylesNode
+         , ul
             [ css
                 [ displayFlex
                 , flexWrap wrap
                 , after [ flexGrow (Css.int 9999), property "content" "''" ]
                 ]
             ]
-          <|
+           <|
             List.map viewPhoto model.photos
-        , scrollListener [ onIntersected ShouldLoadMore ] []
-        , viewLoadingSpinner model.isLoading
-        , viewTemporaryButton
-        , viewError model.error
-        ]
+         , scrollListener [ onIntersected ShouldLoadMore ] []
+         , viewLoadingSpinner model.isLoading
+         , viewTemporaryButton model.isLoading
+         , viewError model.error
+         ]
+            ++ viewSelectedPhoto model.selectedPhotoId model.photos
+        )
 
 
 viewError : Maybe String -> Html Msg
@@ -274,8 +290,8 @@ viewLoadingSpinner isLoading =
         text ""
 
 
-viewTemporaryButton : Html Msg
-viewTemporaryButton =
+viewTemporaryButton : Bool -> Html Msg
+viewTemporaryButton isLoading =
     div
         [ css
             [ displayFlex
@@ -283,6 +299,7 @@ viewTemporaryButton =
             , justifyContent center
             , padding2 (px 16) zero
             ]
+        , Attributes.disabled isLoading
         ]
         [ button
             [ css
@@ -292,9 +309,16 @@ viewTemporaryButton =
                 , fontSize (rem 1.3)
                 ]
             , onClick LoadMore
-            , Attributes.attribute "data-button" "load-more"
+            , attribute "data-button" "load-more"
             ]
-            [ text "Загрузить еще" ]
+            [ text
+                (if isLoading then
+                    "Загружаем..."
+
+                 else
+                    "Загрузить еще"
+                )
+            ]
         ]
 
 
@@ -318,23 +342,199 @@ viewPhoto photo =
     in
     li
         [ style "flex-basis" (String.fromInt calculatedWidth ++ "px")
-        , css [ margin (px 1.5), flexGrow (int 1) ]
+        , css
+            [ position relative
+            , margin (px 1.5)
+            , flexGrow (int 1)
+            ]
         ]
         [ img
             [ css
                 [ display block
                 , width (pct 100)
                 , height (pct 100)
+                , Css.Transitions.transition [ Css.Transitions.backgroundColor3 200 0 Css.Transitions.easeInOut ]
                 , property "object-fit" "cover"
                 ]
+            , style "background-color" photo.color
             , alt description
             , src photo.urls.small
             , Attributes.width calculatedWidth
-            , Attributes.attribute "loading" "lazy"
-            , Attributes.attribute "data-image-id" photo.id
+            , attribute "loading" "lazy"
+            , attribute "data-image-id" photo.id
+
+            -- TODO: onClick should belong to button
+            , onClick (SelectPhoto photo.id)
             ]
             []
         ]
+
+
+
+-- TODO: Передавать сюда онклик и другие параметры если надо
+
+
+viewButton : Html Msg
+viewButton =
+    button
+        [ css
+            [ padding zero
+            , position absolute
+            , top zero
+            , right (px 16)
+            , height (pct 100)
+            , width (px 40)
+            , backgroundColor (rgba 0 0 0 0.75)
+            , borderStyle none
+            ]
+        ]
+        []
+
+
+
+{-
+   TODO: Подумать как лучше организовать поиск фотографий в списке @see PhotoGrove app
+   TODO: Доделать диалоговое окно @see https://www.w3.org/TR/wai-aria-practices/examples/dialog-modal/dialog.html
+   TODO: Сделать фокус
+   TODO: Добавить Html.keyed
+   Это какой-то пиздец, нужно все переделать. Код очень плохой
+
+   Переключение можно сделать через тот же `SelectPhoto photo.id`
+
+   viewCarousel
+   viewCarourselItem
+   viewDialog
+-}
+
+
+findBy : (a -> Bool) -> List a -> Maybe a
+findBy fun list =
+    List.head (List.filter fun list)
+
+
+viewDialog : String -> Msg -> Html Msg -> List (Html Msg)
+viewDialog title closeMsg content =
+    [ div
+        [ css
+            [ position fixed
+            , overflowY auto
+            , top zero
+            , left zero
+            , right zero
+            , bottom zero
+            , backgroundColor (rgba 0 0 0 0.3)
+            ]
+        ]
+        []
+    , Css.Global.global
+        [ Css.Global.body
+            [ overflow hidden
+            ]
+        ]
+    , div
+        [ css
+            [ boxSizing borderBox
+            , padding (px 15)
+            , backgroundColor (rgba 0 0 0 0.7)
+            , position absolute
+            , top (pct 0)
+            , left (pct 0)
+            , height (pct 100)
+            , width (pct 100)
+            ]
+        , attribute "role" "dialog"
+        , id "selected-photo-dialog"
+        , attribute "aria-labelledby" "selected-photo-dialog_label"
+        , attribute "aria-modal" "true"
+        ]
+        [ h2
+            [ css
+                [ position absolute
+                , width (px 1)
+                , height (px 1)
+                , padding zero
+                , margin (px -1)
+                , overflow hidden
+                , borderStyle none
+                ]
+            , id "selected-photo-dialog_label"
+            ]
+            [ text title ]
+        , button [ onClick closeMsg, css [ position absolute, top zero, right zero ] ] []
+        , content
+        ]
+    ]
+
+
+viewSelectedPhoto : Maybe String -> List Photo -> List (Html Msg)
+viewSelectedPhoto photoId photos =
+    case photoId of
+        Just id ->
+            let
+                -- TODO: И как теперь найти тех кто рядом? Посмотреть PhotoGroove на предмет замены findBy!
+                currentPhoto =
+                    findBy (\photo -> photo.id == id) photos
+
+                prevPhoto =
+                    Nothing
+
+                nextPhoto =
+                    Nothing
+
+                viewCarouselItem photo =
+                    li
+                        [ css
+                            [ height (pct 100)
+                            , Css.Transitions.transition [ Css.Transitions.transform3 300 0 Css.Transitions.easeOut ]
+                            ]
+                        ]
+                        [ img
+                            [ css
+                                [ display block
+                                , Css.Transitions.transition [ Css.Transitions.backgroundColor3 200 0 Css.Transitions.easeInOut ]
+                                , property "object-fit" "contain"
+                                , height (pct 100)
+                                ]
+                            , style "background-color" photo.color
+                            , attribute "data-image-id" photo.id
+                            , src photo.urls.raw
+                            ]
+                            []
+                        ]
+
+                viewCarousel =
+                    ul
+                        [ css
+                            [ height (pct 100)
+                            , displayFlex
+                            , justifyContent center
+                            , alignItems center
+                            , listStyle none
+                            , padding zero
+                            ]
+                        ]
+                    <|
+                        case ( currentPhoto, prevPhoto, nextPhoto ) of
+                            ( Nothing, _, _ ) ->
+                                [ text "" ]
+
+                            -- TODO: Как теперь передать им информацию о том какой из них кто?
+                            ( Just photo, Nothing, Nothing ) ->
+                                [ viewCarouselItem photo ]
+
+                            ( Just photo, Just prev, Just next ) ->
+                                [ viewButton, viewCarouselItem prev, viewCarouselItem photo, viewCarouselItem next, viewButton ]
+
+                            ( Just photo, Just prev, Nothing ) ->
+                                [ viewButton, viewCarouselItem prev, viewCarouselItem photo ]
+
+                            ( Just photo, Nothing, Just next ) ->
+                                [ viewCarouselItem photo, viewCarouselItem next, viewButton ]
+            in
+            viewDialog "Dialog title" CloseDialog viewCarousel
+
+        Nothing ->
+            [ text "" ]
 
 
 scrollListener : List (Attribute msg) -> List (Html msg) -> Html msg

@@ -1,4 +1,5 @@
 import "./ScrollListener";
+import "./ImageLoader";
 import { Elm } from "./Collections.elm";
 
 

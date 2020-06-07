@@ -1,15 +1,10 @@
 module Collections exposing (init, main, update, view)
 
 import Browser
-import Css exposing (..)
-import Css.Animations
-import Css.Global
-import Css.Transitions
 import Dict
-import Html exposing (b)
-import Html.Styled exposing (Attribute, Html, button, div, h2, img, li, p, text, toUnstyled, ul)
-import Html.Styled.Attributes as Attributes exposing (alt, attribute, class, css, id, src, style)
-import Html.Styled.Events exposing (onClick, onFocus, onMouseOver)
+import Html exposing (Attribute, Html, button, div, h2, img, li, p, text, ul)
+import Html.Attributes as Attributes exposing (alt, attribute, class, id, src, style)
+import Html.Events exposing (onClick, onFocus, onMouseOver)
 import Http exposing (header)
 import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Pipeline as DecodePipeline
@@ -204,23 +199,6 @@ updatePagination pagination =
 
 
 -- View
-
-
-globalStylesNode : Html msg
-globalStylesNode =
-    Css.Global.global
-        [ Css.Global.everything [ boxSizing borderBox ]
-        , Css.Global.ul [ margin (px 0), padding (px 0), listStyle none ]
-        , Css.Global.body
-            [ fontFamilies [ "sans-serif" ]
-            , fontSize (px 16)
-            , color (hex "#484848")
-            , margin (px 0)
-            ]
-        ]
-
-
-
 -- TODO: Добавить Html.keyed для рендера списка
 
 
@@ -228,15 +206,7 @@ view : Model -> Html Msg
 view model =
     div
         [ class "collections" ]
-        ([ globalStylesNode
-         , ul
-            [ css
-                [ displayFlex
-                , flexWrap wrap
-                , after [ flexGrow (Css.int 9999), property "content" "''" ]
-                ]
-            ]
-           <|
+        ([ ul [ class "gallery" ] <|
             List.map viewPhoto model.photos
          , scrollListener [ onIntersected ShouldLoadMore ] []
          , viewLoadingSpinner model.isLoading
@@ -245,6 +215,10 @@ view model =
          ]
             ++ viewSelectedPhoto model.selectedPhotoId model.photos
         )
+
+
+
+-- TODO: Design error
 
 
 viewError : Maybe String -> Html Msg
@@ -259,32 +233,8 @@ viewError error =
 
 viewLoadingSpinner : Bool -> Html Msg
 viewLoadingSpinner isLoading =
-    let
-        spinningAnimation =
-            Css.Animations.keyframes
-                [ ( 0, [ Css.Animations.transform [ rotate (deg 0) ] ] )
-                , ( 100, [ Css.Animations.transform [ rotate (deg 360) ] ] )
-                ]
-    in
     if isLoading then
-        div
-            [ css
-                [ position fixed
-                , zIndex (int 1)
-                , right (em 2)
-                , bottom (em 2)
-                , width (px 48)
-                , height (px 48)
-                , borderRadius (px 96)
-                , border3 (px 2) solid (hex "000")
-                , borderTopColor transparent
-                , animationName spinningAnimation
-                , animationDuration (sec 1)
-                , property "animation-iteration-count" "infinite"
-                , property "animation-timing-function" "linear"
-                ]
-            ]
-            []
+        div [ class "spinner" ] []
 
     else
         text ""
@@ -293,21 +243,9 @@ viewLoadingSpinner isLoading =
 viewTemporaryButton : Bool -> Html Msg
 viewTemporaryButton isLoading =
     div
-        [ css
-            [ displayFlex
-            , alignItems center
-            , justifyContent center
-            , padding2 (px 16) zero
-            ]
-        , Attributes.disabled isLoading
-        ]
+        [ class "loading-indicator", Attributes.disabled isLoading ]
         [ button
-            [ css
-                [ padding2 (px 8) (px 12)
-                , border3 (px 1) solid (hex "fc0")
-                , backgroundColor (hex "fff")
-                , fontSize (rem 1.3)
-                ]
+            [ class "loading-indicator__text"
             , onClick LoadMore
             , attribute "data-button" "load-more"
             ]
@@ -342,26 +280,14 @@ viewPhoto photo =
     in
     li
         [ style "flex-basis" (String.fromInt calculatedWidth ++ "px")
-        , css
-            [ position relative
-            , margin (px 1.5)
-            , flexGrow (int 1)
-            ]
+        , style "background-color" photo.color
+        , class "gallery__item"
         ]
-        [ img
-            [ css
-                [ display block
-                , width (pct 100)
-                , height (pct 100)
-                , Css.Transitions.transition [ Css.Transitions.backgroundColor3 200 0 Css.Transitions.easeInOut ]
-                , property "object-fit" "cover"
-                ]
-            , style "background-color" photo.color
+        [ imageLoader
+            [ attribute "color" photo.color
+            , attribute "id" photo.id
             , alt description
             , src photo.urls.small
-            , Attributes.width calculatedWidth
-            , attribute "loading" "lazy"
-            , attribute "data-image-id" photo.id
 
             -- TODO: onClick should belong to button
             , onClick (SelectPhoto photo.id)
@@ -376,19 +302,7 @@ viewPhoto photo =
 
 viewButton : Html Msg
 viewButton =
-    button
-        [ css
-            [ padding zero
-            , position absolute
-            , top zero
-            , right (px 16)
-            , height (pct 100)
-            , width (px 40)
-            , backgroundColor (rgba 0 0 0 0.75)
-            , borderStyle none
-            ]
-        ]
-        []
+    button [ class "carousel__arrow" ] []
 
 
 
@@ -415,56 +329,25 @@ findBy fun list =
 
 viewDialog : String -> Msg -> Html Msg -> List (Html Msg)
 viewDialog title closeMsg content =
-    [ div
-        [ css
-            [ position fixed
-            , overflowY auto
-            , top zero
-            , left zero
-            , right zero
-            , bottom zero
-            , backgroundColor (rgba 0 0 0 0.3)
-            ]
-        ]
-        []
-    , Css.Global.global
-        [ Css.Global.body
-            [ overflow hidden
-            ]
-        ]
+    [ div [ class "dialog__backdrop" ] []
     , div
-        [ css
-            [ boxSizing borderBox
-            , padding (px 15)
-            , backgroundColor (rgba 0 0 0 0.7)
-            , position fixed
-            , top (pct 0)
-            , left (pct 0)
-            , height (pct 100)
-            , width (pct 100)
-            ]
+        [ class "dialog"
         , attribute "role" "dialog"
         , id "selected-photo-dialog"
         , attribute "aria-labelledby" "selected-photo-dialog_label"
         , attribute "aria-modal" "true"
         ]
         [ h2
-            [ css
-                [ position absolute
-                , width (px 1)
-                , height (px 1)
-                , padding zero
-                , margin (px -1)
-                , overflow hidden
-                , borderStyle none
-                ]
-            , id "selected-photo-dialog_label"
-            ]
+            [ class "sr-only", id "selected-photo-dialog_label" ]
             [ text title ]
-        , button [ onClick closeMsg, css [ position absolute, top zero, right zero ] ] []
+        , button [ onClick closeMsg, class "button--close" ] []
         , content
         ]
     ]
+
+
+
+-- TODO: Make image-loader custom element
 
 
 viewSelectedPhoto : Maybe String -> List Photo -> List (Html Msg)
@@ -482,24 +365,13 @@ viewSelectedPhoto photoId photos =
                 nextPhoto =
                     Nothing
 
+                -- TODO: Find a way to apply image-loader to carousel image too
+                -- TODO: Detect window sizes and load only appropriate image size (@see picture tag)
                 viewCarouselItem photo =
                     li
-                        [ css
-                            [ height (pct 100)
-                            , displayFlex
-                            , alignItems center
-                            , justifyContent center
-                            , Css.Transitions.transition [ Css.Transitions.transform3 300 0 Css.Transitions.easeOut ]
-                            ]
-                        ]
+                        [ class "carousel__item" ]
                         [ img
-                            [ css
-                                [ display block
-                                , Css.Transitions.transition [ Css.Transitions.backgroundColor3 200 0 Css.Transitions.easeInOut ]
-                                , property "object-fit" "contain"
-                                , width (pct 100)
-                                , maxHeight (pct 100)
-                                ]
+                            [ class "carousel__image"
                             , style "background-color" photo.color
                             , attribute "data-image-id" photo.id
                             , src photo.urls.raw
@@ -508,17 +380,7 @@ viewSelectedPhoto photoId photos =
                         ]
 
                 viewCarousel =
-                    ul
-                        [ css
-                            [ height (pct 100)
-                            , displayFlex
-                            , justifyContent center
-                            , alignItems center
-                            , listStyle none
-                            , padding zero
-                            ]
-                        ]
-                    <|
+                    ul [ class "carousel" ] <|
                         case ( currentPhoto, prevPhoto, nextPhoto ) of
                             ( Nothing, _, _ ) ->
                                 [ text "" ]
@@ -544,14 +406,19 @@ viewSelectedPhoto photoId photos =
 
 scrollListener : List (Attribute msg) -> List (Html msg) -> Html msg
 scrollListener attributes children =
-    Html.Styled.node "scroll-listener" attributes children
+    Html.node "scroll-listener" attributes children
+
+
+imageLoader : List (Attribute msg) -> List (Html msg) -> Html msg
+imageLoader attributes children =
+    Html.node "image-loader" attributes children
 
 
 onIntersected : (Bool -> msg) -> Attribute msg
 onIntersected toMsg =
     Decode.at [ "detail" ] Decode.bool
         |> Decode.map toMsg
-        |> Html.Styled.Events.on "intersected"
+        |> Html.Events.on "intersected"
 
 
 
@@ -662,7 +529,7 @@ main : Program String Model Msg
 main =
     Browser.element
         { init = init
-        , view = view >> toUnstyled
+        , view = view
         , update = update
         , subscriptions = \_ -> Sub.none
         }
